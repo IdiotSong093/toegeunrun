@@ -1932,17 +1932,36 @@ function reset(){
 function sanitize(list){
   return (Array.isArray(list)?list:[]).filter(e=>e&&typeof e.name==='string'&&typeof e.score==='number');
 }
+/* 공용 랭킹 — 전 세계 어디서 플레이해도 하나의 점수판 (textdb 공용 저장소) */
+const BOARD_GET='https://textdb.online/toegeunrun-nau-2026';
+const BOARD_POST='https://textdb.online/update';
+const BOARD_KEY='toegeunrun-nau-2026';
+async function fetchBoard(){
+  const r=await fetch(BOARD_GET+'?t='+Date.now(),{cache:'no-store'});
+  if(!r.ok)throw 0;
+  const tx=await r.text();
+  return sanitize(tx?JSON.parse(tx):[]);
+}
 async function loadBoard(){
-  try{const r={ok:false};if(r.ok){board=sanitize(await r.json());serverOK=true;return;}}catch(e){}
+  try{board=await fetchBoard();serverOK=true;return;}catch(e){}
   serverOK=false;
   board=sanitize(JSON.parse(LS.getItem('er_localboard')||'[]'));
 }
 async function postScore(name,sc){
-  if(serverOK){
-    try{const r=await fetch('/score',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,score:sc})});
-      if(r.ok){board=sanitize(await r.json());return;}}catch(e){serverOK=false;}
-  }
+  try{
+    let b=[];
+    try{b=await fetchBoard();}catch(e){}
+    const now=new Date();
+    const ds=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+    const ex=b.find(e=>e.name===name);
+    if(ex){if(sc>ex.score){ex.score=sc;ex.date=ds;}}
+    else b.push({name,score:sc,date:ds});
+    b.sort((a,c)=>c.score-a.score);b=b.slice(0,100);
+    const body=new URLSearchParams();body.set('key',BOARD_KEY);body.set('value',JSON.stringify(b));
+    const w=await fetch(BOARD_POST,{method:'POST',body});
+    if(w.ok){board=b;serverOK=true;return;}
+  }catch(e){}
+  serverOK=false;
   let b=sanitize(JSON.parse(LS.getItem('er_localboard')||'[]'));
   const ex=b.find(e=>e.name===name);
   if(ex){if(sc>ex.score)ex.score=sc;}else b.push({name,score:sc});
